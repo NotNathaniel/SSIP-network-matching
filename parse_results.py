@@ -17,13 +17,18 @@ def _load_shared_strings(zf: zipfile.ZipFile) -> List[str]:
     return strings
 
 
-def extract_edges(xlsx_path: str, sheet_xml: str = "xl/worksheets/sheet2.xml") -> List[Tuple[str, str, float]]:
-    """Return a list of edges from the Results worksheet."""
+def extract_edges(xlsx_path: str, sheet_xml: str = "xl/worksheets/sheet2.xml") -> List[Tuple[str, str, float, str, float]]:
+    """Return a list of edges from the Results worksheet.
+
+    Each edge is a tuple ``(saudi_entity, swedish_entity, match_score,
+    justification_text, justification_score)``. Only the top 1 company
+    values are used because they are always present in the sheet.
+    """
     with zipfile.ZipFile(xlsx_path) as zf:
         strings = _load_shared_strings(zf)
         sheet = ET.fromstring(zf.read(sheet_xml))
 
-    edges: List[Tuple[str, str, float]] = []
+    edges: List[Tuple[str, str, float, str, float]] = []
     for row in sheet.findall(f".//{NS}row"):
         cells: dict[str, str] = {}
         for c in row.findall(f"{NS}c"):
@@ -42,23 +47,32 @@ def extract_edges(xlsx_path: str, sheet_xml: str = "xl/worksheets/sheet2.xml") -
         sa = cells.get('A', '').lstrip('-').lstrip('|').strip()
         sw = cells.get('D', '').strip()
         score_text = cells.get('E', '').strip()
+        just_text = cells.get('I', '').strip()
+        just_score_text = cells.get('J', '').strip()
         try:
             score = float(score_text)
+            just_score = float(just_score_text)
         except ValueError:
             continue
         if sa and sw and sa.lower() != 'problem_name':
-            edges.append((sa, sw, score))
+            edges.append((sa, sw, score, just_text, just_score))
     return edges
 
 
-def write_edges_csv(edges: List[Tuple[str, str, float]], csv_path: str) -> None:
+def write_edges_csv(edges: List[Tuple[str, str, float, str, float]], csv_path: str) -> None:
     with open(csv_path, 'w', newline='', encoding='utf-8') as fh:
         writer = csv.writer(fh)
-        writer.writerow(["saudi_entity", "swedish_entity", "match_score"])
+        writer.writerow([
+            "saudi_entity",
+            "swedish_entity",
+            "match_score",
+            "justification",
+            "justification_score",
+        ])
         writer.writerows(edges)
 
 
 if __name__ == "__main__":
-    edges = extract_edges('SSIP Project Results.xlsx')
+    edges = extract_edges('SSIP Project Results (1).xlsx')
     write_edges_csv(edges, 'network_edges.csv')
     print(f"wrote {len(edges)} edges")
